@@ -6,9 +6,9 @@ name: Selenide UI Tests — Swag Labs
 
 on:
   push:
-    branches: [main, develop]
+    branches: [master]
   pull_request:
-    branches: [main, develop]
+    branches: [master]
   workflow_dispatch:
     inputs:
       suite:
