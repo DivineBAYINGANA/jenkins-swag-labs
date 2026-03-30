@@ -1,0 +1,215 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# .github/workflows/ci.yml
+#
+# Triggers on every push and pull request to main / develop.
+# Jobs:
+#   smoke      → runs @Tag("smoke") tests
+#   regression → runs @Tag("regression") tests (after smoke passes)
+#   report     → generates and publishes Allure report to GitHub Pages
+# ─────────────────────────────────────────────────────────────────────────────
+name: Selenide UI Tests — Swag Labs
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: "Test suite to run (smoke | regression | all)"
+        required: false
+        default: "all"
+
+env:
+  JAVA_VERSION: "17"
+  MAVEN_OPTS: "-Xmx1g"
+
+# ── Job 1: Smoke Tests ────────────────────────────────────────────────────────
+jobs:
+  smoke:
+    name: Smoke Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Java ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+          cache: maven
+
+      - name: Install Google Chrome
+        uses: browser-actions/setup-chrome@v1
+
+      - name: Run smoke test suite
+        run: mvn test -P smoke -Dheadless=true -Dbrowser=chrome --no-transfer-progress
+        continue-on-error: true   # collect results even on failure
+
+      - name: Upload smoke Allure results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: allure-results-smoke
+          path: target/allure-results
+          retention-days: 7
+
+      - name: Upload Selenide screenshots (on failure)
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: selenide-screenshots-smoke
+          path: target/selenide-reports
+          retention-days: 7
+
+  # ── Job 2: Regression Tests ──────────────────────────────────────────────────
+  regression:
+    name: Regression Tests
+    runs-on: ubuntu-latest
+    needs: smoke           # run regression only if smoke succeeds
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Java ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+          cache: maven
+
+      - name: Install Google Chrome
+        uses: browser-actions/setup-chrome@v1
+
+      - name: Run regression test suite
+        run: mvn test -P regression -Dheadless=true -Dbrowser=chrome --no-transfer-progress
+        continue-on-error: true
+
+      - name: Upload regression Allure results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: allure-results-regression
+          path: target/allure-results
+          retention-days: 7
+
+      - name: Upload Selenide screenshots (on failure)
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: selenide-screenshots-regression
+          path: target/selenide-reports
+          retention-days: 7
+
+  # ── Job 3: Allure Report ─────────────────────────────────────────────────────
+  report:
+    name: Generate & Publish Allure Report
+    runs-on: ubuntu-latest
+    needs: [smoke, regression]
+    if: always()    # generate report even when tests fail
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Java ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+          cache: maven
+
+      # Download both artifact batches into the same allure-results dir
+      - name: Download smoke results
+        uses: actions/download-artifact@v4
+        with:
+          name: allure-results-smoke
+          path: target/allure-results
+        continue-on-error: true
+
+      - name: Download regression results
+        uses: actions/download-artifact@v4
+        with:
+          name: allure-results-regression
+          path: target/allure-results
+        continue-on-error: true
+
+      - name: Generate Allure HTML report
+        run: mvn allure:report --no-transfer-progress
+
+      - name: Upload Allure HTML report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-html-report
+          path: target/allure-report
+          retention-days: 14
+
+      # Publish to GitHub Pages (requires Pages enabled on the repo)
+      - name: Deploy report to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        if: github.ref == 'refs/heads/main'
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: target/allure-report
+          destination_dir: allure-report
+
+  # ── Job 4: Slack Notification ────────────────────────────────────────────────
+  notify:
+    name: Slack Notification
+    runs-on: ubuntu-latest
+    needs: [smoke, regression]
+    if: always()
+
+    steps:
+      - name: Determine overall status
+        id: status
+        run: |
+          if [[ "${{ needs.smoke.result }}" == "success" && \
+                "${{ needs.regression.result }}" == "success" ]]; then
+            echo "emoji=white_check_mark" >> $GITHUB_OUTPUT
+            echo "color=good"            >> $GITHUB_OUTPUT
+            echo "status=PASSED"         >> $GITHUB_OUTPUT
+          else
+            echo "emoji=x"              >> $GITHUB_OUTPUT
+            echo "color=danger"         >> $GITHUB_OUTPUT
+            echo "status=FAILED"        >> $GITHUB_OUTPUT
+          fi
+
+      - name: Send Slack notification
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "attachments": [
+                {
+                  "color": "${{ steps.status.outputs.color }}",
+                  "blocks": [
+                    {
+                      "type": "header",
+                      "text": {
+                        "type": "plain_text",
+                        "text": ":${{ steps.status.outputs.emoji }}: Swag Labs Tests — ${{ steps.status.outputs.status }}"
+                      }
+                    },
+                    {
+                      "type": "section",
+                      "fields": [
+                        { "type": "mrkdwn", "text": "*Repository:*\n${{ github.repository }}" },
+                        { "type": "mrkdwn", "text": "*Branch:*\n${{ github.ref_name }}" },
+                        { "type": "mrkdwn", "text": "*Smoke:*\n${{ needs.smoke.result }}" },
+                        { "type": "mrkdwn", "text": "*Regression:*\n${{ needs.regression.result }}" },
+                        { "type": "mrkdwn", "text": "*Triggered by:*\n${{ github.actor }}" },
+                        { "type": "mrkdwn", "text": "*Run:*\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View workflow>" }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
