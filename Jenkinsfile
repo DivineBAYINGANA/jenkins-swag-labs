@@ -21,13 +21,13 @@ pipeline {
 
         stage('Build') {
             steps {
-                sh 'mvn clean install -DskipTests -B'
+                bat 'mvn clean install -DskipTests -B'
             }
         }
 
         stage('Test') {
             steps {
-                sh 'mvn test -B'
+                bat 'mvn test -B'
             }
             post {
                 always {
@@ -38,7 +38,7 @@ pipeline {
 
         stage('Report') {
             steps {
-                sh 'mvn allure:report -B || true'
+                bat 'mvn allure:report -B || exit /b 0'
                 publishHTML([reportDir: 'target/allure-report', reportFiles: 'index.html', reportName: 'Allure Report'])
             }
         }
