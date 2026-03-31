@@ -2,13 +2,13 @@ package com.swaglabs.regression;
 
 import com.swaglabs.api.SwaglabsApiClient;
 import io.qameta.allure.*;
-import io.rest-assured.response.Response;
+import io.restassured.response.Response;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
-import static io.rest-assured.RestAssured.given;
+import static io.restassured.RestAssured.given;
 import static org.assertj.core.api.Assertions.*;
 import static org.hamcrest.Matchers.*;
 
@@ -63,7 +63,6 @@ public class ApiTest {
     @Test
     @Story("Product Details")
     @DisplayName("Verify product details endpoint with ID parameter")
-    @Severity(SeverityLevel.HIGH)
     void testGetProductById() {
         int productId = 1;
         Response response = apiClient.getRequest("/products/" + productId);
@@ -81,7 +80,7 @@ public class ApiTest {
     @Test
     @Story("Error Handling")
     @DisplayName("Verify 404 response for non-existent product")
-    @Severity(SeverityLevel.MEDIUM)
+    @Severity(SeverityLevel.NORMAL)
     void testGetProductNotFound() {
         int invalidProductId = 99999;
         Response response = apiClient.getRequest("/products/" + invalidProductId);
@@ -108,7 +107,7 @@ public class ApiTest {
     @Test
     @Story("Response Headers")
     @DisplayName("Verify response headers contain expected values")
-    @Severity(SeverityLevel.MEDIUM)
+    @Severity(SeverityLevel.NORMAL)
     void testResponseHeaders() {
         Response response = apiClient.getRequest("/products");
 
@@ -123,7 +122,7 @@ public class ApiTest {
     @Test
     @Story("API Performance")
     @DisplayName("Verify API response time is acceptable")
-    @Severity(SeverityLevel.MEDIUM)
+    @Severity(SeverityLevel.NORMAL)
     void testApiResponseTime() {
         long startTime = System.currentTimeMillis();
         Response response = apiClient.getRequest("/products");
@@ -140,7 +139,6 @@ public class ApiTest {
     @Test
     @Story("Pagination")
     @DisplayName("Verify pagination works correctly")
-    @Severity(SeverityLevel.HIGH)
     void testPaginationSupport() {
         Response response = apiClient.getRequest("/products?page=1&limit=10");
 
@@ -154,7 +152,6 @@ public class ApiTest {
     @Test
     @Story("Data Validation")
     @DisplayName("Verify API returns properly formatted JSON")
-    @Severity(SeverityLevel.HIGH)
     void testApiResponseFormat() {
         Response response = apiClient.getRequest("/products");
 
